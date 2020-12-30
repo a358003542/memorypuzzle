@@ -5,6 +5,7 @@ import pygame
 
 FPS = 60  # frames per second, the general speed of the program
 DIFFICULTY = 'supereasy'
+CATEGORY = 'fruity'
 ICONS_NUMBER = 4
 WINDOWWIDTH = 640  # size of window's width in pixels
 WINDOWHEIGHT = 490  # size of windows' height in pixels
@@ -26,10 +27,7 @@ LIGHTBGCOLOR = GRAY
 BOXCOLOR = WHITE
 HIGHLIGHTCOLOR = BLUE
 
-
-ALL_FRUIT = ['apple', 'banana', 'cherry', 'grape', 'kiwi_fruit', 'lemon',
-             'mango', 'mangosteen', 'orange', 'pear', 'strawberry',
-             'watermelon']
+MSYH_FONT_NAME = 'microsoftyaheimicrosoftyaheiui'
 
 
 assert (BOARDWIDTH * BOARDHEIGHT) % 2 == 0, \

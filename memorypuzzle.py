@@ -1,21 +1,26 @@
 #!/usr/bin/env python
 # -*-coding:utf-8-*-
 
+import os
 import random
 import sys
 import pygame
 import pygame_menu
+import logging
 
 from pygame.locals import *
 
+logger = logging.getLogger(__name__)
+
 from config import FPS, WINDOWWIDTH, WINDOWHEIGHT, REVEALSPEED, COVERSPEED, \
     BOXSIZE, GAPSIZE, BOARDWIDTH, BOARDHEIGHT, BGCOLOR, \
-    LIGHTBGCOLOR, BOXCOLOR, HIGHLIGHTCOLOR, ICONS_NUMBER, ALL_FRUIT, DIFFICULTY
+    LIGHTBGCOLOR, BOXCOLOR, HIGHLIGHTCOLOR, ICONS_NUMBER, DIFFICULTY, \
+    MSYH_FONT_NAME, CATEGORY
 
 
 def set_difficulty(value, difficulty):
     global DIFFICULTY
-    DIFFICULTY = value[0]
+    DIFFICULTY = difficulty
 
     global ICONS_NUMBER
     global BOARDWIDTH
@@ -43,6 +48,27 @@ def set_difficulty(value, difficulty):
         BOARDHEIGHT = 7
 
 
+def set_category(value, category):
+    global CATEGORY
+    CATEGORY = category
+
+
+def try_load_msyh_font():
+    """
+    试着从windows系统加载微软雅黑字体
+    :return:
+    """
+    pygame.font.init()
+    try:
+        msyh_font = pygame.font.Font("C:\Windows\Fonts\msyh.ttc", 24)
+        for font_name in pygame.font.get_fonts():
+            if os.path.samefile(pygame.font.match_font(font_name),
+                                "C:\Windows\Fonts\msyh.ttc"):
+                return font_name
+    except FileNotFoundError as e:
+        logger.error(f'微软雅黑字体没有找到')
+
+
 def calc_xmargin():
     global WINDOWWIDTH
     global BOARDWIDTH
@@ -60,7 +86,12 @@ def calc_ymargin():
 
 
 def getRandomizedBoard():
-    icons = random.sample(ALL_FRUIT, ICONS_NUMBER)
+    import glob
+    filename_list = [os.path.basename(file) for file in
+                     glob.glob(f'resource/{CATEGORY}/*.png')]
+    icon_name_list = [os.path.splitext(filename)[0] for filename in
+                      filename_list]
+    icons = random.sample(icon_name_list, ICONS_NUMBER)
 
     # calculate how many icons are needed
     numIconsUsed = int(BOARDWIDTH * BOARDHEIGHT / 2)
@@ -95,11 +126,12 @@ def getIconName(board, boxx, boxy):
     return board[boxx][boxy]
 
 
-def drawIcon(shape, boxx, boxy):
+def drawIcon(icon_name, boxx, boxy):
+    global CATEGORY
     left, top = leftTopCoordsOfBox(boxx,
                                    boxy)  # get pixel coords from board coords
     # Draw the icon
-    iconImg = pygame.image.load(f'resource/fruity/{shape}.png')
+    iconImg = pygame.image.load(f'resource/{CATEGORY}/{icon_name}.png')
     iconImg = pygame.transform.scale(iconImg, (BOXSIZE, BOXSIZE))
 
     surface.blit(iconImg, (left, top))
@@ -116,8 +148,8 @@ def drawBoard(board, revealed):
                                  (left, top, BOXSIZE, BOXSIZE))
             else:
                 # Draw the (revealed) icon.
-                shape = getIconName(board, boxx, boxy)
-                drawIcon(shape, boxx, boxy)
+                icon_name = getIconName(board, boxx, boxy)
+                drawIcon(icon_name, boxx, boxy)
 
 
 def splitIntoGroupsOf(groupSize, theList):
@@ -154,8 +186,8 @@ def drawBoxCovers(board, boxes, coverage):
     for box in boxes:
         left, top = leftTopCoordsOfBox(box[0], box[1])
         pygame.draw.rect(surface, BGCOLOR, (left, top, BOXSIZE, BOXSIZE))
-        shape = getIconName(board, box[0], box[1])
-        drawIcon(shape, box[0], box[1])
+        icon_name = getIconName(board, box[0], box[1])
+        drawIcon(icon_name, box[0], box[1])
         if coverage > 0:  # only draw the cover if there is an coverage
             pygame.draw.rect(surface, BOXCOLOR,
                              (left, top, coverage, BOXSIZE))
@@ -372,13 +404,13 @@ def return_titlepage():
 
 def create_pause_menu():
     global pause_menu
-    pause_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.9,
-                                  'Welcome',
-                                  theme=pygame_menu.themes.THEME_BLUE)
+    pause_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.6,
+                                  '欢迎',
+                                  theme=MY_THEME_BLUE)
 
-    pause_menu.add_button('Resume', resume_game)
-    pause_menu.add_button('Return TitlePage', return_titlepage)
-    pause_menu.add_button('Quit', pygame_menu.events.EXIT)
+    pause_menu.add_button('继续游戏', resume_game)
+    pause_menu.add_button('返回标题', return_titlepage)
+    pause_menu.add_button('退出游戏', pygame_menu.events.EXIT)
 
     pause_menu.center_content()
     return pause_menu
@@ -387,16 +419,22 @@ def create_pause_menu():
 def create_main_menu():
     global main_menu
     main_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.6,
-                                 'Welcome',
-                                 theme=pygame_menu.themes.THEME_BLUE)
+                                 '欢迎',
+                                 theme=MY_THEME_BLUE)
 
-    main_menu.add_selector('Difficulty :',
-                           [('supereasy', 1), ('easy', 2), ('normal', 3),
-                            ('hard', 4), ('superhard', 5)],
-                           onchange=set_difficulty)
+    main_menu.add_selector('选择难度：',
+                           [('超级简单', 'supereasy'), ('简单', 'easy'), \
+                            ('普通', 'normal'), ('困难', 'hard'),
+                            ('非常困难', 'superhard')],
+                           onchange=set_difficulty,
+                           )
+    main_menu.add_selector('选择分类：',
+                           [('水果', 'fruity'), ('体育', 'sports'),
+                            ('糕点', 'bakery')],
+                           onchange=set_category)
 
-    main_menu.add_button('Play', start_game)
-    main_menu.add_button('Quit', pygame_menu.events.EXIT)
+    main_menu.add_button('开始游玩', start_game)
+    main_menu.add_button('退出游戏', pygame_menu.events.EXIT)
 
     main_menu.center_content()
     return main_menu
@@ -406,8 +444,15 @@ def main():
     global clock
     global main_menu
     global surface
-
+    global MSYH_FONT_NAME
+    global MY_THEME_BLUE
     pygame.init()
+
+    MSYH_FONT_NAME = try_load_msyh_font()
+
+    MY_THEME_BLUE = pygame_menu.themes.THEME_BLUE.copy()
+    MY_THEME_BLUE.title_font = MSYH_FONT_NAME
+    MY_THEME_BLUE.widget_font = MSYH_FONT_NAME
 
     surface = pygame.display.set_mode((WINDOWWIDTH, WINDOWHEIGHT))
     pygame.display.set_caption('Memory Puzzle Game')

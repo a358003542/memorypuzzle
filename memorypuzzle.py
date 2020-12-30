@@ -9,7 +9,7 @@ import pygame_menu
 from pygame.locals import *
 
 from config import FPS, WINDOWWIDTH, WINDOWHEIGHT, REVEALSPEED, COVERSPEED, \
-    BOXSIZE, GAPSIZE, BOARDWIDTH, BOARDHEIGHT, XMARGIN, YMARGIN, BGCOLOR, \
+    BOXSIZE, GAPSIZE, BOARDWIDTH, BOARDHEIGHT, BGCOLOR, \
     LIGHTBGCOLOR, BOXCOLOR, HIGHLIGHTCOLOR, ICONS_NUMBER, ALL_FRUIT, DIFFICULTY
 
 
@@ -20,43 +20,43 @@ def set_difficulty(value, difficulty):
     global ICONS_NUMBER
     global BOARDWIDTH
     global BOARDHEIGHT
-    global WINDOWWIDTH
-    global WINDOWHEIGHT
 
     if DIFFICULTY == 'supereasy':
         ICONS_NUMBER = 4
         BOARDWIDTH = 6
         BOARDHEIGHT = 5
-        WINDOWWIDTH = 384
-        WINDOWHEIGHT = 350
-
     elif DIFFICULTY == 'easy':
         ICONS_NUMBER = 6
         BOARDWIDTH = 8
         BOARDHEIGHT = 6
-        WINDOWWIDTH = 512
-        WINDOWHEIGHT = 420
     elif DIFFICULTY == 'normal':
         ICONS_NUMBER = 8
         BOARDWIDTH = 10
         BOARDHEIGHT = 7
-        WINDOWWIDTH = 640
-        WINDOWHEIGHT = 490
     elif DIFFICULTY == 'hard':
         ICONS_NUMBER = 10
         BOARDWIDTH = 10
         BOARDHEIGHT = 7
-        WINDOWWIDTH = 640
-        WINDOWHEIGHT = 490
     elif DIFFICULTY == 'superhard':
         ICONS_NUMBER = 12
         BOARDWIDTH = 10
         BOARDHEIGHT = 7
-        WINDOWWIDTH = 640
-        WINDOWHEIGHT = 490
 
-    global surface
-    surface = pygame.display.set_mode((WINDOWWIDTH, WINDOWHEIGHT))
+
+def calc_xmargin():
+    global WINDOWWIDTH
+    global BOARDWIDTH
+    global BOXSIZE
+    global GAPSIZE
+    return int((WINDOWWIDTH - (BOARDWIDTH * (BOXSIZE + GAPSIZE))) / 2)
+
+
+def calc_ymargin():
+    global WINDOWHEIGHT
+    global BOARDHEIGHT
+    global BOXSIZE
+    global GAPSIZE
+    return int((WINDOWHEIGHT - (BOARDHEIGHT * (BOXSIZE + GAPSIZE))) / 2)
 
 
 def getRandomizedBoard():
@@ -131,8 +131,9 @@ def splitIntoGroupsOf(groupSize, theList):
 
 def leftTopCoordsOfBox(boxx, boxy):
     # Convert board coordinates to pixel coordinates
-    left = boxx * (BOXSIZE + GAPSIZE) + XMARGIN
-    top = boxy * (BOXSIZE + GAPSIZE) + YMARGIN
+
+    left = boxx * (BOXSIZE + GAPSIZE) + calc_xmargin()
+    top = boxy * (BOXSIZE + GAPSIZE) + calc_ymargin()
     return (left, top)
 
 
@@ -341,9 +342,11 @@ def start_game():
                     return
             elif e.type == MOUSEMOTION:
                 mousex, mousey = e.pos
-            elif e.type == MOUSEBUTTONUP:
-                mousex, mousey = e.pos
-                mouseClicked = True
+            elif e.type == MOUSEBUTTONDOWN:
+                # left click
+                if pygame.mouse.get_pressed()[0]:
+                    mousex, mousey = e.pos
+                    mouseClicked = True
 
         # Continue playing
         handle_game_event(mousex, mousey, mouseClicked)
@@ -383,7 +386,7 @@ def create_pause_menu():
 
 def create_main_menu():
     global main_menu
-    main_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.9,
+    main_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.6,
                                  'Welcome',
                                  theme=pygame_menu.themes.THEME_BLUE)
 

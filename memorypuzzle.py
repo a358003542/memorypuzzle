@@ -1,100 +1,153 @@
 #!/usr/bin/env python
 # -*-coding:utf-8-*-
 
+import glob
 import os
 import random
 import sys
 import pygame
 import pygame_menu
 import logging
+from dataclasses import dataclass
 
 from pygame.locals import *
 
+import config
+
 logger = logging.getLogger(__name__)
 
-from config import FPS, WINDOWWIDTH, WINDOWHEIGHT, REVEALSPEED, COVERSPEED, \
-    BOXSIZE, GAPSIZE, BOARDWIDTH, BOARDHEIGHT, BGCOLOR, \
-    LIGHTBGCOLOR, BOXCOLOR, HIGHLIGHTCOLOR, ICONS_NUMBER, DIFFICULTY, \
-    MSYH_FONT_NAME, CATEGORY
+
+@dataclass
+class GameStatus:
+    """
+    一局游戏的核心状态 可以根据这个参量随时复原游戏
+    """
+    mainBoard: list
+    revealedBoxes: list
+    firstSelection: tuple = ()
+    game_end: bool = False
+
+    def get_icon_name(self, boxx, boxy):
+        return self.mainBoard[boxx][boxy]
+
+    def draw_board(self):
+        for boxx in range(config.BOARDWIDTH):
+            for boxy in range(config.BOARDHEIGHT):
+                left, top = get_box_leftTopCoords(boxx, boxy)
+                if not self.revealedBoxes[boxx][boxy]:
+                    # Draw a covered box.
+                    pygame.draw.rect(surface, config.BOXCOLOR,
+                                     (left, top, config.BOXSIZE,
+                                      config.BOXSIZE))
+                else:
+                    # Draw the (revealed) icon.
+                    icon_name = self.get_icon_name(boxx, boxy)
+                    draw_icon(icon_name, boxx, boxy)
+
+    def start_game_animation(self):
+        boxes = []
+        for x in range(config.BOARDWIDTH):
+            for y in range(config.BOARDHEIGHT):
+                boxes.append((x, y))
+        random.shuffle(boxes)
+
+        def split_into_groups_of(groupSize, theList):
+            # splits a list into a list of lists, where the inner lists have at
+            # most groupSize number of items.
+            result = []
+            for i in range(0, len(theList), groupSize):
+                result.append(theList[i:i + groupSize])
+            return result
+
+        boxGroups = split_into_groups_of(8, boxes)
+
+        game_status.draw_board()
+
+        for boxGroup in boxGroups:
+            self.reveal_boxes_animation(boxGroup)
+            self.cover_boxes_animation(boxGroup)
+
+    def reveal_boxes_animation(self, boxesToReveal):
+        # Do the "box reveal" animation.
+        for coverage in range(config.BOXSIZE, (-config.REVEALSPEED) - 1,
+                              -config.REVEALSPEED):
+            draw_box_covers(self.mainBoard, boxesToReveal, coverage)
+
+    def cover_boxes_animation(self, boxesToCover):
+        # Do the "box cover" animation.
+        for coverage in range(0, config.BOXSIZE + config.REVEALSPEED,
+                              config.REVEALSPEED):
+            draw_box_covers(self.mainBoard, boxesToCover, coverage)
+
+    def game_won_animation(self):
+        color1 = config.LIGHTBGCOLOR
+        color2 = config.BGCOLOR
+
+        for i in range(13):
+            color1, color2 = color2, color1  # swap colors
+            surface.fill(color1)
+            self.draw_board()
+            pygame.display.update()
+            pygame.time.wait(300)
+
+    def has_won(self):
+        # Returns True if all the boxes have been revealed, otherwise False
+        for i in self.revealedBoxes:
+            if False in i:
+                return False  # return False if any boxes are covered.
+        return True
 
 
 def set_difficulty(value, difficulty):
-    global DIFFICULTY
-    DIFFICULTY = difficulty
+    config.DIFFICULTY = difficulty
 
-    global ICONS_NUMBER
-    global BOARDWIDTH
-    global BOARDHEIGHT
-
-    if DIFFICULTY == 'supereasy':
-        ICONS_NUMBER = 4
-        BOARDWIDTH = 6
-        BOARDHEIGHT = 5
-    elif DIFFICULTY == 'easy':
-        ICONS_NUMBER = 6
-        BOARDWIDTH = 8
-        BOARDHEIGHT = 6
-    elif DIFFICULTY == 'normal':
-        ICONS_NUMBER = 8
-        BOARDWIDTH = 10
-        BOARDHEIGHT = 7
-    elif DIFFICULTY == 'hard':
-        ICONS_NUMBER = 10
-        BOARDWIDTH = 10
-        BOARDHEIGHT = 7
-    elif DIFFICULTY == 'superhard':
-        ICONS_NUMBER = 12
-        BOARDWIDTH = 10
-        BOARDHEIGHT = 7
+    if difficulty == 'supereasy':
+        config.ICONS_NUMBER = 2
+        config.BOARDWIDTH = 6
+        config.BOARDHEIGHT = 5
+    elif difficulty == 'easy':
+        config.ICONS_NUMBER = 4
+        config.BOARDWIDTH = 8
+        config.BOARDHEIGHT = 6
+    elif difficulty == 'normal':
+        config.ICONS_NUMBER = 6
+        config.BOARDWIDTH = 10
+        config.BOARDHEIGHT = 7
+    elif difficulty == 'hard':
+        config.ICONS_NUMBER = 8
+        config.BOARDWIDTH = 10
+        config.BOARDHEIGHT = 7
+    elif difficulty == 'superhard':
+        config.ICONS_NUMBER = 10
+        config.BOARDWIDTH = 10
+        config.BOARDHEIGHT = 7
 
 
 def set_category(value, category):
-    global CATEGORY
-    CATEGORY = category
-
-
-def try_load_msyh_font():
-    """
-    试着从windows系统加载微软雅黑字体
-    :return:
-    """
-    pygame.font.init()
-    try:
-        msyh_font = pygame.font.Font("C:\Windows\Fonts\msyh.ttc", 24)
-        for font_name in pygame.font.get_fonts():
-            if os.path.samefile(pygame.font.match_font(font_name),
-                                "C:\Windows\Fonts\msyh.ttc"):
-                return font_name
-    except FileNotFoundError as e:
-        logger.error(f'微软雅黑字体没有找到')
+    config.CATEGORY = category
 
 
 def calc_xmargin():
-    global WINDOWWIDTH
-    global BOARDWIDTH
-    global BOXSIZE
-    global GAPSIZE
-    return int((WINDOWWIDTH - (BOARDWIDTH * (BOXSIZE + GAPSIZE))) / 2)
+    return int((config.WINDOWWIDTH -
+                (config.BOARDWIDTH * (config.BOXSIZE +
+                                      config.GAPSIZE))) / 2)
 
 
 def calc_ymargin():
-    global WINDOWHEIGHT
-    global BOARDHEIGHT
-    global BOXSIZE
-    global GAPSIZE
-    return int((WINDOWHEIGHT - (BOARDHEIGHT * (BOXSIZE + GAPSIZE))) / 2)
+    return int((config.WINDOWHEIGHT -
+                (config.BOARDHEIGHT * (config.BOXSIZE +
+                                       config.GAPSIZE))) / 2)
 
 
-def getRandomizedBoard():
-    import glob
+def gen_random_board():
     filename_list = [os.path.basename(file) for file in
-                     glob.glob(f'resource/{CATEGORY}/*.png')]
+                     glob.glob(f'resource/{config.CATEGORY}/*.png')]
     icon_name_list = [os.path.splitext(filename)[0] for filename in
                       filename_list]
-    icons = random.sample(icon_name_list, ICONS_NUMBER)
+    icons = random.sample(icon_name_list, config.ICONS_NUMBER)
 
     # calculate how many icons are needed
-    numIconsUsed = int(BOARDWIDTH * BOARDHEIGHT / 2)
+    numIconsUsed = int(config.BOARDWIDTH * config.BOARDHEIGHT / 2)
 
     while numIconsUsed > len(icons):
         icons.append(random.choice(icons))
@@ -104,210 +157,130 @@ def getRandomizedBoard():
 
     # Create the board data structure, with randomly placed icons.
     board = []
-    for x in range(BOARDWIDTH):
+    index = 0
+    for x in range(config.BOARDWIDTH):
         column = []
-        for y in range(BOARDHEIGHT):
-            column.append(icons[0])
-            del icons[0]  # remove the icons as we assign them
+        for y in range(config.BOARDHEIGHT):
+            column.append(icons[index])
+            index += 1
         board.append(column)
     return board
 
 
-def generateRevealedBoxesData(val):
+def gen_revealed_boxes():
     revealedBoxes = []
-    for i in range(BOARDWIDTH):
-        revealedBoxes.append([val] * BOARDHEIGHT)
+    for i in range(config.BOARDWIDTH):
+        revealedBoxes.append([False] * config.BOARDHEIGHT)
     return revealedBoxes
 
 
-def getIconName(board, boxx, boxy):
-    # shape value for x, y spot is stored in board[x][y][0]
-    # color value for x, y spot is stored in board[x][y][1]
-    return board[boxx][boxy]
-
-
-def drawIcon(icon_name, boxx, boxy):
-    global CATEGORY
-    left, top = leftTopCoordsOfBox(boxx,
-                                   boxy)  # get pixel coords from board coords
+def draw_icon(icon_name, boxx, boxy):
+    left, top = get_box_leftTopCoords(boxx,
+                                      boxy)
     # Draw the icon
-    iconImg = pygame.image.load(f'resource/{CATEGORY}/{icon_name}.png')
-    iconImg = pygame.transform.scale(iconImg, (BOXSIZE, BOXSIZE))
+    iconImg = pygame.image.load(
+        f'resource/{config.CATEGORY}/{icon_name}.png')
+    iconImg = pygame.transform.scale(iconImg, (
+        config.BOXSIZE, config.BOXSIZE))
 
     surface.blit(iconImg, (left, top))
 
 
-def drawBoard(board, revealed):
-    # Draws all of the boxes in their covered or revealed state.
-    for boxx in range(BOARDWIDTH):
-        for boxy in range(BOARDHEIGHT):
-            left, top = leftTopCoordsOfBox(boxx, boxy)
-            if not revealed[boxx][boxy]:
-                # Draw a covered box.
-                pygame.draw.rect(surface, BOXCOLOR,
-                                 (left, top, BOXSIZE, BOXSIZE))
-            else:
-                # Draw the (revealed) icon.
-                icon_name = getIconName(board, boxx, boxy)
-                drawIcon(icon_name, boxx, boxy)
-
-
-def splitIntoGroupsOf(groupSize, theList):
-    # splits a list into a list of lists, where the inner lists have at
-    # most groupSize number of items.
-    result = []
-    for i in range(0, len(theList), groupSize):
-        result.append(theList[i:i + groupSize])
-    return result
-
-
-def leftTopCoordsOfBox(boxx, boxy):
+def get_box_leftTopCoords(boxx, boxy):
     # Convert board coordinates to pixel coordinates
-
-    left = boxx * (BOXSIZE + GAPSIZE) + calc_xmargin()
-    top = boxy * (BOXSIZE + GAPSIZE) + calc_ymargin()
+    left = boxx * (
+            config.BOXSIZE + config.GAPSIZE) + calc_xmargin()
+    top = boxy * (
+            config.BOXSIZE + config.GAPSIZE) + calc_ymargin()
     return (left, top)
 
 
-def getBoxAtPixel(x, y):
-    for boxx in range(BOARDWIDTH):
-        for boxy in range(BOARDHEIGHT):
-            left, top = leftTopCoordsOfBox(boxx, boxy)
-            boxRect = pygame.Rect(left, top, BOXSIZE, BOXSIZE)
+def get_box_at_pixel(x, y):
+    for boxx in range(config.BOARDWIDTH):
+        for boxy in range(config.BOARDHEIGHT):
+            left, top = get_box_leftTopCoords(boxx, boxy)
+            boxRect = pygame.Rect(left, top, config.BOXSIZE,
+                                  config.BOXSIZE)
             if boxRect.collidepoint(x, y):
                 return (boxx, boxy)
     return (None, None)
 
 
-def drawBoxCovers(board, boxes, coverage):
+def draw_box_covers(board, boxes, coverage):
     # Draws boxes being covered/revealed. "boxes" is a list
     # of two-item lists, which have the x & y spot of the box.
     global surface, clock
     for box in boxes:
-        left, top = leftTopCoordsOfBox(box[0], box[1])
-        pygame.draw.rect(surface, BGCOLOR, (left, top, BOXSIZE, BOXSIZE))
-        icon_name = getIconName(board, box[0], box[1])
-        drawIcon(icon_name, box[0], box[1])
+        left, top = get_box_leftTopCoords(box[0], box[1])
+        pygame.draw.rect(surface, config.BGCOLOR, (
+            left, top, config.BOXSIZE, config.BOXSIZE))
+        icon_name = game_status.get_icon_name(box[0], box[1])
+        draw_icon(icon_name, box[0], box[1])
         if coverage > 0:  # only draw the cover if there is an coverage
-            pygame.draw.rect(surface, BOXCOLOR,
-                             (left, top, coverage, BOXSIZE))
+            pygame.draw.rect(surface, config.BOXCOLOR,
+                             (left, top, coverage, config.BOXSIZE))
     pygame.display.update()
-    clock.tick(FPS)
+    clock.tick(config.FPS)
 
 
-def revealBoxesAnimation(board, boxesToReveal):
-    # Do the "box reveal" animation.
-    for coverage in range(BOXSIZE, (-REVEALSPEED) - 1, -REVEALSPEED):
-        drawBoxCovers(board, boxesToReveal, coverage)
-
-
-def coverBoxesAnimation(board, boxesToCover):
-    # Do the "box cover" animation.
-    for coverage in range(0, BOXSIZE + REVEALSPEED, REVEALSPEED):
-        drawBoxCovers(board, boxesToCover, coverage)
-
-
-def drawHighlightBox(boxx, boxy):
-    left, top = leftTopCoordsOfBox(boxx, boxy)
-    pygame.draw.rect(surface, HIGHLIGHTCOLOR,
-                     (left - 5, top - 5, BOXSIZE + 10, BOXSIZE + 10), 4)
-
-
-def startGameAnimation(board):
-    # Randomly reveal the boxes 8 at a time.
-    coveredBoxes = generateRevealedBoxesData(False)
-    boxes = []
-    for x in range(BOARDWIDTH):
-        for y in range(BOARDHEIGHT):
-            boxes.append((x, y))
-    random.shuffle(boxes)
-    boxGroups = splitIntoGroupsOf(8, boxes)
-
-    drawBoard(board, coveredBoxes)
-    for boxGroup in boxGroups:
-        revealBoxesAnimation(board, boxGroup)
-        coverBoxesAnimation(board, boxGroup)
-
-
-def gameWonAnimation(board):
-    # flash the background color when the player has won
-    coveredBoxes = generateRevealedBoxesData(True)
-    color1 = LIGHTBGCOLOR
-    color2 = BGCOLOR
-
-    for i in range(13):
-        color1, color2 = color2, color1  # swap colors
-        surface.fill(color1)
-        drawBoard(board, coveredBoxes)
-        pygame.display.update()
-        pygame.time.wait(300)
-
-
-def hasWon(revealedBoxes):
-    # Returns True if all the boxes have been revealed, otherwise False
-    for i in revealedBoxes:
-        if False in i:
-            return False  # return False if any boxes are covered.
-    return True
+def draw_highlight_box(boxx, boxy):
+    left, top = get_box_leftTopCoords(boxx, boxy)
+    pygame.draw.rect(surface, config.HIGHLIGHTCOLOR,
+                     (left - 5, top - 5, config.BOXSIZE + 10,
+                      config.BOXSIZE + 10), 4)
 
 
 def handle_game_event(mousex, mousey, mouseClicked):
-    global firstSelection
+    global game_status
 
-    boxx, boxy = getBoxAtPixel(mousex, mousey)
-    if boxx != None and boxy != None:
+    boxx, boxy = get_box_at_pixel(mousex, mousey)
+    if boxx is not None and boxy is not None:
         # The mouse is currently over a box.
-        if not revealedBoxes[boxx][boxy]:
-            drawHighlightBox(boxx, boxy)
-        if not revealedBoxes[boxx][boxy] and mouseClicked:
-            revealBoxesAnimation(mainBoard, [(boxx, boxy)])
-            revealedBoxes[boxx][boxy] = True  # set the box as "revealed"
-            if firstSelection == None:  # the current box was the first box clicked
-                firstSelection = (boxx, boxy)
-            else:  # the current box was the second box clicked
-                # Check if there is a match between the two icons.
-                icon1shape = getIconName(mainBoard,
-                                         firstSelection[0],
-                                         firstSelection[1])
-                icon2shape = getIconName(mainBoard, boxx,
-                                         boxy)
+        if not game_status.revealedBoxes[boxx][boxy]:
+            draw_highlight_box(boxx, boxy)
+        if not game_status.revealedBoxes[boxx][boxy] and mouseClicked:
+            game_status.reveal_boxes_animation([(boxx, boxy)])
+            game_status.revealedBoxes[boxx][
+                boxy] = True  # set the box as "revealed"
+            if not game_status.firstSelection:
+                game_status.firstSelection = (boxx, boxy)
+            else:
+                icon1shape = game_status.get_icon_name(
+                    game_status.firstSelection[0],
+                    game_status.firstSelection[1])
+                icon2shape = game_status.get_icon_name(boxx,
+                                                       boxy)
 
                 if icon1shape != icon2shape:
                     # Icons don't match. Re-cover up both selections.
-                    pygame.time.wait(COVERSPEED)
-                    coverBoxesAnimation(mainBoard, [
-                        (firstSelection[0], firstSelection[1]),
+                    pygame.time.wait(config.COVERSPEED)
+                    game_status.cover_boxes_animation([
+                        (game_status.firstSelection[0],
+                         game_status.firstSelection[1]),
                         (boxx, boxy)])
-                    revealedBoxes[firstSelection[0]][firstSelection[1]] = False
-                    revealedBoxes[boxx][boxy] = False
+                    game_status.revealedBoxes[game_status.firstSelection[0]][
+                        game_status.firstSelection[1]] = False
+                    game_status.revealedBoxes[boxx][boxy] = False
 
-                elif hasWon(revealedBoxes):  # check if all pairs found
-                    gameWonAnimation(mainBoard)
+                elif game_status.has_won():  # check if all pairs found
+                    game_status.game_won_animation()
+                    return_titlepage()
+                    game_status.game_end = True
 
-                firstSelection = None  # reset firstSelection variable
+                game_status.firstSelection = ()  # reset firstSelection variable
 
 
 def resume_game():
-    global main_menu
-    global clock
-    global mainBoard
-    global revealedBoxes
-    global firstSelection
-    global pause_menu
-
     mousex = 0  # used to store x coordinate of mouse event
     mousey = 0  # used to store y coordinate of mouse event
 
-    # Reset main menu and disable
-    # You also can set another menu, like a 'pause menu', or just use the same
-    # main_menu as the menu that will check all your input.
     main_menu.disable()
     main_menu.reset(1)
 
-    while True:
+    while not game_status.game_end:
         mouseClicked = False
-        surface.fill(BGCOLOR)  # drawing the window
-        drawBoard(mainBoard, revealedBoxes)
+        surface.fill(config.BGCOLOR)  # drawing the window
+        game_status.draw_board()
 
         # Application events
         events = pygame.event.get()
@@ -330,38 +303,30 @@ def resume_game():
         handle_game_event(mousex, mousey, mouseClicked)
         # Redraw the screen and wait a clock tick.
         pygame.display.update()
-        clock.tick(FPS)
+        clock.tick(config.FPS)
 
 
 def start_game():
-    global main_menu
-    global clock
-    global mainBoard
-    global revealedBoxes
-    global firstSelection
+    global game_status
 
-    # Reset main menu and disable
-    # You also can set another menu, like a 'pause menu', or just use the same
-    # main_menu as the menu that will check all your input.
     main_menu.disable()
     main_menu.reset(1)
 
     mousex = 0  # used to store x coordinate of mouse event
     mousey = 0  # used to store y coordinate of mouse event
 
-    mainBoard = getRandomizedBoard()
-    revealedBoxes = generateRevealedBoxesData(False)
+    game_status = GameStatus(mainBoard=gen_random_board(),
+                             revealedBoxes=gen_revealed_boxes(),
+                             )
 
-    firstSelection = None  # stores the (x, y) of the first box clicked.
+    surface.fill(config.BGCOLOR)
+    game_status.start_game_animation()
 
-    surface.fill(BGCOLOR)
-    startGameAnimation(mainBoard)
-
-    while True:
+    while not game_status.game_end:
         # Application events
         mouseClicked = False
-        surface.fill(BGCOLOR)  # drawing the window
-        drawBoard(mainBoard, revealedBoxes)
+        surface.fill(config.BGCOLOR)  # drawing the window
+        game_status.draw_board()
 
         events = pygame.event.get()
         for e in events:
@@ -384,7 +349,7 @@ def start_game():
         handle_game_event(mousex, mousey, mouseClicked)
         # Redraw the screen and wait a clock tick.
         pygame.display.update()
-        clock.tick(FPS)
+        clock.tick(config.FPS)
 
 
 def menu_background():
@@ -392,21 +357,19 @@ def menu_background():
     Function used by menus, draw on background while menu is active.
     :return: None
     """
-    global surface
     surface.fill((128, 0, 128))
 
 
 def return_titlepage():
-    global main_menu
     pause_menu.disable()
     main_menu.enable()
 
 
-def create_pause_menu():
-    global pause_menu
-    pause_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.6,
+def create_pause_menu(theme):
+    pause_menu = pygame_menu.Menu(config.WINDOWHEIGHT * 0.9,
+                                  config.WINDOWWIDTH * 0.6,
                                   '欢迎',
-                                  theme=MY_THEME_BLUE)
+                                  theme=theme)
 
     pause_menu.add_button('继续游戏', resume_game)
     pause_menu.add_button('返回标题', return_titlepage)
@@ -416,11 +379,11 @@ def create_pause_menu():
     return pause_menu
 
 
-def create_main_menu():
-    global main_menu
-    main_menu = pygame_menu.Menu(WINDOWHEIGHT * 0.9, WINDOWWIDTH * 0.6,
+def create_main_menu(theme):
+    main_menu = pygame_menu.Menu(config.WINDOWHEIGHT * 0.9,
+                                 config.WINDOWWIDTH * 0.6,
                                  '欢迎',
-                                 theme=MY_THEME_BLUE)
+                                 theme=theme)
 
     main_menu.add_selector('选择难度：',
                            [('超级简单', 'supereasy'), ('简单', 'easy'), \
@@ -443,33 +406,31 @@ def create_main_menu():
 def main():
     global clock
     global main_menu
+    global pause_menu
     global surface
-    global MSYH_FONT_NAME
-    global MY_THEME_BLUE
+
     pygame.init()
 
-    MSYH_FONT_NAME = try_load_msyh_font()
-
     MY_THEME_BLUE = pygame_menu.themes.THEME_BLUE.copy()
-    MY_THEME_BLUE.title_font = MSYH_FONT_NAME
-    MY_THEME_BLUE.widget_font = MSYH_FONT_NAME
+    MY_THEME_BLUE.title_font = config.MSYH_FONT_NAME
+    MY_THEME_BLUE.widget_font = config.MSYH_FONT_NAME
 
-    surface = pygame.display.set_mode((WINDOWWIDTH, WINDOWHEIGHT))
+    surface = pygame.display.set_mode((config.WINDOWWIDTH, config.WINDOWHEIGHT))
     pygame.display.set_caption('Memory Puzzle Game')
 
     clock = pygame.time.Clock()
 
-    main_menu = create_main_menu()
-    pause_menu = create_pause_menu()
+    main_menu = create_main_menu(MY_THEME_BLUE)
+    pause_menu = create_pause_menu(MY_THEME_BLUE)
     pause_menu.disable()
 
     while True:
         # handle menu event
-        main_menu.mainloop(surface, menu_background, fps_limit=FPS)
-        pause_menu.mainloop(surface, menu_background, fps_limit=FPS)
+        main_menu.mainloop(surface, menu_background, fps_limit=config.FPS)
+        pause_menu.mainloop(surface, menu_background, fps_limit=config.FPS)
 
         pygame.display.update()
-        clock.tick(FPS)
+        clock.tick(config.FPS)
 
 
 if __name__ == '__main__':
